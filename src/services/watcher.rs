@@ -48,19 +48,10 @@ fn default_matches() -> HashMap<String, String> {
     .collect()
 }
 
-/// The patterns can change with Roblox updates, the repository keeps them current
-pub async fn update_matches(app: &App) {
-    let mut matches = default_matches();
-    if let Ok(r) = app.api.get("https://raw.githubusercontent.com/Gugas19/Roblox-Account-Manager/master/RBX%20Alt%20Manager/Resources/WatcherRegexMatches.txt", None).await {
-        if r.ok() {
-            for line in r.body.lines() {
-                if let Some((name, value)) = line.split_once('=') {
-                    matches.insert(name.trim().to_string(), value.trim_end_matches('\r').to_string());
-                }
-            }
-        }
-    }
-    *app.watcher.matches.lock().unwrap() = matches;
+/// The built-in patterns only. Upstream downloaded overrides from its GitHub at runtime, which let a third party
+/// change how the watcher reads Roblox logs (AUDIT.md, M1): edit `default_matches` when Roblox changes its logs.
+fn load_matches(app: &App) {
+    *app.watcher.matches.lock().unwrap() = default_matches();
 }
 
 fn logs_folder() -> PathBuf {
@@ -273,7 +264,7 @@ pub fn apply(app: std::sync::Arc<App>) {
 
     let scan_app = app.clone();
     tauri::async_runtime::spawn(async move {
-        update_matches(&scan_app).await;
+        load_matches(&scan_app);
         while scan_app.watcher.running.load(Ordering::SeqCst) {
             let a = scan_app.clone();
             let _ = tokio::task::spawn_blocking(move || check_processes(&a)).await;
