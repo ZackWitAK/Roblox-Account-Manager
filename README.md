@@ -4,17 +4,15 @@
 
 # Roblox Account Manager
 
-**A modern, translated, Rust rewrite of [ic3w0lf22's Roblox Account Manager](https://github.com/ic3w0lf22/Roblox-Account-Manager), with Anti-AFK and a command line built in**
+**A hardened personal fork of [Gugas19's Rust rewrite](https://github.com/Gugas19/Roblox-Account-Manager) of [ic3w0lf22's Roblox Account Manager](https://github.com/ic3w0lf22/Roblox-Account-Manager): audited, no auto-updater, built from source**
 
-[![Download](https://img.shields.io/github/v/release/Gugas19/Roblox-Account-Manager?label=Download&style=for-the-badge&logo=windows&color=4F7CFF)](https://github.com/Gugas19/Roblox-Account-Manager/releases/latest)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge)
 ![Rust](https://img.shields.io/badge/Rust-Tauri%202-B7410E?style=for-the-badge&logo=rust)
-[![CI](https://img.shields.io/github/actions/workflow/status/Gugas19/Roblox-Account-Manager/ci.yml?branch=master&label=CI&style=for-the-badge)](https://github.com/Gugas19/Roblox-Account-Manager/actions/workflows/ci.yml)
 
 ![Roblox Account Manager](Images/main.png)
 
-[Download](#download) · [Highlights](#highlights) · [Command line](#command-line) · [Languages](#languages) · [Screenshots](#screenshots) · [Building](#building-from-source) · [FAQ](#frequently-asked-questions)
+[About this fork](#about-this-fork) · [Highlights](#highlights) · [Command line](#command-line) · [Languages](#languages) · [Screenshots](#screenshots) · [Building](#building-from-source) · [FAQ](#frequently-asked-questions)
 
 </div>
 
@@ -22,23 +20,36 @@ Keep all your Roblox accounts in one place and join games with any of them in on
 accounts, grinding accounts, with as many Roblox windows open at the same time as you like. Leave them in game for
 hours with the built in Anti-AFK, or drive everything from scripts with `ram-cli`.
 
-## Download
+## About this fork
 
-1. Download the zip from the [latest release](https://github.com/Gugas19/Roblox-Account-Manager/releases/latest).
-2. Extract it into a folder of its own, for example on your desktop (it won't run from inside the zip).
-3. Run `RobloxAccountManager.exe`.
+This is a personal fork of [Gugas19/Roblox-Account-Manager](https://github.com/Gugas19/Roblox-Account-Manager),
+which is itself a Rust/Tauri rewrite of ic3w0lf22's original C# app (archived in October 2024). The fork exists to
+run a copy whose code has been read and that only changes when its owner changes it.
 
-In the zip, besides the license:
+**What's different from upstream** (on the `hardening` branch):
 
-| File | What it is |
-| --- | --- |
-| `RobloxAccountManager.exe` | the app, about 6 MB |
-| `ram-cli.exe` | the [command line](#command-line) |
+- **Audited.** [AUDIT.md](AUDIT.md) reviews upstream commit `06eadcd` for cookie handling, every network host,
+  the local web API, process and file access, build configuration and dependencies, with severities and what
+  could not be verified.
+- **No auto-updater.** Upstream checks GitHub every 6 hours and installs any release signed with the upstream
+  maintainer's key. That code, its settings, its UI, `ram-cli update` and the signing tool are removed, so this
+  build never downloads or installs a new version of itself. To update, pull the changes you want and
+  [build again](#building-from-source).
+- **No prebuilt releases.** Build it yourself, and don't run upstream's release exes: the source here is what was
+  reviewed.
+- Everything else (features, file formats, local web API) is upstream's. Findings rated medium and low in the audit
+  are not fixed yet.
 
-- It uses the WebView2 runtime that comes with Windows 10 and 11. Nothing else to install: no .NET, and no bundled browser engine.
-- From version 4.0.1 on it [updates itself](#automatic-updates). Version 4.0.0 has to be replaced by hand once.
-- The browser used to add accounts (Chrome for Testing) is downloaded automatically the first time you need it, into
-  `%LOCALAPPDATA%\RobloxAccountManager\Chrome`. A progress bar shows while it downloads.
+**Still contacted at runtime:** the Roblox APIs, Google's Chrome for Testing download (first time you add an account),
+and, only when the Roblox Watcher is on, a pattern file on upstream's GitHub (audit finding M1). Optional, if you turn
+them on: ip-api.com for server regions and your Discord webhook. See [AUDIT.md](AUDIT.md#2-network-calls-every-outbound-host).
+
+**Adding accounts.** The browser used to add accounts (Chrome for Testing) is downloaded automatically the first
+time you need it, into `%LOCALAPPDATA%\RobloxAccountManager\Chrome`. Nothing in this app solves or skips Roblox's
+human verification ("Press and hold"): you complete it yourself in that browser. If it keeps failing, import the
+account's `.ROBLOSECURITY` cookie instead (the arrow next to `Add Account` > `Cookie(s)`).
+
+It uses the WebView2 runtime that comes with Windows 10 and 11: no .NET, and no bundled browser engine.
 
 ### Coming from version 3 or the original app
 
@@ -82,24 +93,12 @@ scheduled task. When the app is open the command runs inside it, so the window u
 English, Português (Portugal), Español, Français and Deutsch. Switch at any time with the flag button in the top
 right, and the whole app changes instantly.
 
-### Automatic updates
-The app checks the [releases](https://github.com/Gugas19/Roblox-Account-Manager/releases) when it starts and every
-6 hours, downloads a new version in the background, and installs it the next time it starts (or right away with
-`Restart to update` in the top bar). It never restarts by itself while you use it.
-- Every release is signed with the developer's private key, and the app checks that signature before it keeps a
-  download and again before it installs it. A changed download, or a release not signed with that key, is refused,
-  even if it comes from this repository.
-- The version is part of what's signed, so an old release can't be published again as a newer one, and only newer
-  versions are installed.
-- Only the two exes are taken from the download, and your accounts and settings are never touched.
-- Turn it off, or check by hand, in `Settings` > `General`. `ram-cli update` downloads it from the command line.
-
 ### Security
 - Your accounts file is encrypted for your Windows user, or with a password if you choose one.
   A password-protected file works on any PC.
-- The local web API refuses protected requests without its password, and only listens to this PC unless you allow other devices.
+- The local web API is off by default. It refuses protected requests without its password, and only listens to this PC unless you allow other devices. Leave it off if you don't use it (see [AUDIT.md](AUDIT.md#4-local-web-api-and-ram-cli)).
 - The command line only talks to the app in its own folder, run by the same Windows user, and never prints cookies.
-- Updates are installed only when they're signed with the developer's key (see [Automatic updates](#automatic-updates)).
+- This fork has no auto-updater: nothing replaces the exes but your own build.
 
 ## Command line
 
@@ -112,7 +111,6 @@ ram-cli import [file]
 ram-cli antiafk [start|stop|now|status]
 ram-cli status
 ram-cli open
-ram-cli update
 ram-cli fps <accounts> <5-1000|default>
 ```
 
@@ -178,13 +176,21 @@ The screenshots use made-up demo accounts and are taken by the interface tests (
 Requirements: Windows 10 or 11, [Rust](https://rustup.rs) and [Node.js](https://nodejs.org) 20 or later.
 
 ```powershell
-npm --prefix ui install
+git checkout hardening
+npm --prefix ui ci          # installs exactly the versions in ui/package-lock.json
 npm --prefix ui run build
 cargo build --release
 ```
 
-`RobloxAccountManager.exe` and `ram-cli.exe` end up in `target\release`. While working on the interface,
-`npm --prefix ui run dev` serves it with hot reload at localhost:1420, and a debug build (`cargo build`) uses it.
+`RobloxAccountManager.exe` and `ram-cli.exe` end up in `target\release`. Copy both into a folder of their own (for
+example `C:\RAM`), next to your `AccountData.json`, `RAMSettings.ini` and `RAMTheme.ini`, and run them from there.
+The app keeps its files next to the exe, and a copy run from inside `target` acts as a separate test copy.
+
+`Cargo.lock` was edited by hand to drop the updater's signing crates. If your first build changes it anyway, check
+`git diff Cargo.lock` before committing: it should only remove entries, never change versions.
+
+While working on the interface, `npm --prefix ui run dev` serves it with hot reload at localhost:1420, and a debug
+build (`cargo build`) uses it.
 
 ### Layout
 
@@ -194,16 +200,15 @@ src/
   core/         files: settings, accounts, encryption, languages (same formats as version 3)
   roblox/       the Roblox web APIs
   platform/     Windows: processes, windows, mutexes, ping, log file
-  services/     launching Roblox, browser, local web API, watcher, Anti-AFK, updater
+  services/     launching Roblox, browser, local web API, watcher, Anti-AFK
   commands/     what the interface can ask for, one file per part of the interface
   cli/          ram-cli: options, commands, the pipe to the open app
 ui/src/
   components/   one folder per part of the interface (shadcn/ui underneath)
   hooks/ lib/   actions, store, translations, theme
 lang/           translations
-tests/          interface, command line and updater tests, fixtures
+tests/          interface and command line tests, the no-updater check, fixtures
 tools/          strings.py (translation check), release.ps1
-examples/       sign-release.rs, signs a release for the updater
 ```
 
 ### Tests
@@ -212,28 +217,24 @@ examples/       sign-release.rs, signs a release for the updater
 cargo test --lib                    # file formats, encryption (including a file encrypted by version 3), settings, dates
 node tests/cli.mjs [--release]      # the command line, on its own and through an open app
 node tests/ui.mjs  [--release]      # the interface, clicking through every window over WebView2's DevTools protocol
-node tests/update.mjs               # the updater: a signed update installs, a changed or relabelled one is refused
+node tests/update.mjs               # no updater code, endpoint or plugin in the sources, lock files or built exes
 python tools/strings.py             # every text translated
 ```
 
 The tests run copies of the app with demo accounts. They never launch Roblox, close it or press keys, and they
 refuse to run while your own Roblox Account Manager is open, so your accounts and a game you have open are left alone.
 
-### Releasing
+### Release zip (optional)
 
 ```powershell
-cargo run --example sign-release -- new-key   # once: makes the signing key (keep a backup of it)
-pwsh -File tools\release.ps1                  # builds, tests, zips and signs target\dist\RobloxAccountManager-<version>.zip
+pwsh -File tools\release.ps1                  # builds, tests and zips target\dist\RobloxAccountManager-<version>.zip
 ```
 
-Upload the zip and its `.sig` to a GitHub release tagged `v<version>`. The private key stays in
-`%USERPROFILE%\.roblox-account-manager\`, never in the repository; installed apps only accept updates signed with it.
+The zip isn't signed for any updater and nothing installs it automatically. It's just the two exes and the license,
+with its SHA-256 printed. Optional: with a Windows code signing certificate installed, set `RAM_CODESIGN_THUMBPRINT`
+to its thumbprint and the exes are Authenticode-signed too.
 
-The release runs while the app is open (the tests use their own copies, which never take the focus) and takes about
-3 minutes. Optional: with a Windows code signing certificate installed, set `RAM_CODESIGN_THUMBPRINT` to its thumbprint
-and the exes are signed with it too, so Windows and antivirus software trust them more.
-
-Every push is also built and unit tested on GitHub ([CI](.github/workflows/ci.yml)), without any secret.
+Pushes are built and unit tested by GitHub Actions ([CI](.github/workflows/ci.yml)), without any secret.
 
 ### Updating the screenshots
 
@@ -310,7 +311,7 @@ The account needs *Who can invite me to private servers* set to Everyone in its 
 
 ## **Q:** I’ve encountered a bug/issue
 
-**A:** Open an [issue](https://github.com/Gugas19/Roblox-Account-Manager/issues) with screenshots (if possible) and a description of what happened. The app writes a `log.txt` next to it that helps too (check it doesn't contain anything private before sharing it).
+**A:** Problems with this fork's changes belong in [this fork's issues](https://github.com/ZackWitAK/Roblox-Account-Manager/issues). App bugs that also happen upstream can go to [upstream's issues](https://github.com/Gugas19/Roblox-Account-Manager/issues). Include screenshots if possible and a description of what happened. The app writes a `log.txt` next to it that helps too (check it doesn't contain anything private before sharing it).
 
 
 ## **Q:** I can’t launch multiple accounts repeatedly.
@@ -374,12 +375,12 @@ The account needs *Who can invite me to private servers* set to Everyone in its 
 | Automatic Cookie Refresh | Unused accounts get new cookies so they don't get logged out | `Settings` > `General` > `Auto Refresh Cookies` (signs out other sessions) |
 | Quick Log In | Log in to an account on another device with Roblox's Quick Log In | Right click an account > `Quick Log In` |
 | Tray | Keep the app, Anti-AFK and the web API running with the window closed | Anti-AFK settings |
-| Automatic Updates | New versions download by themselves and install on the next start, only when signed by the developer | `Settings` > `General` |
 
 # Credits
 
 - [ic3w0lf22](https://github.com/ic3w0lf22/Roblox-Account-Manager), the original Roblox Account Manager, and everyone who contributed to it.
 - [Campionnn](https://github.com/Campionnn/Roblox-Account-Manager), who kept it updated.
+- [Gugas19](https://github.com/Gugas19/Roblox-Account-Manager), who wrote the Rust/Tauri version this fork is based on, including its interface, Anti-AFK and command line.
 - [Agzes/AntiAFK-RBX](https://github.com/Agzes/AntiAFK-RBX), whose features inspired the Anti-AFK (written from scratch here).
 - [Tauri](https://tauri.app), [shadcn/ui](https://ui.shadcn.com), [Lucide](https://lucide.dev) icons.
 - Flags: [flagcdn.com](https://flagcdn.com) (public domain).
