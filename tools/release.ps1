@@ -1,12 +1,11 @@
 <#
 .SYNOPSIS
-    Builds a release and signs it for the auto updater. Doesn't publish anything.
+    Builds and tests a release zip. Doesn't publish anything.
 
     pwsh -File tools\release.ps1
 
-    Leaves target\dist\RobloxAccountManager-<version>.zip and .zip.sig: upload both to the GitHub release
-    tagged v<version>. Installed apps only accept the zip with its signature, made with the key in
-    %USERPROFILE%\.roblox-account-manager\release-signing-key.txt (keep a backup of it).
+    Leaves target\dist\RobloxAccountManager-<version>.zip and prints its SHA-256. This fork has no auto updater:
+    the zip is only for you, nothing installs it automatically.
 
     The app can stay open: the tests run their own copies, which never take the focus. What doesn't depend on
     each other runs at the same time (the final build uses one core for a while, the PC has more).
@@ -56,8 +55,7 @@ Step "Interface" { npm --prefix ui run build | Select-Object -Last 1 }
 
 # the unit tests build in their own folder, so they don't wait for the release build's lock
 Together "Build and unit tests" @{
-    # the signing tool too, built alongside (the updater test and the signature use it)
-    "release build" = "cargo build --release --bins --example sign-release"
+    "release build" = "cargo build --release --bins"
     "unit tests"    = "set CARGO_TARGET_DIR=target\unit&& cargo test --lib"
 }
 
@@ -70,7 +68,7 @@ $Built = $Exes | ForEach-Object { (Get-FileHash $_).Hash }
 Together "Tests" @{
     "command line tests" = "node tests/cli.mjs --release"
     "interface tests"    = "node tests/ui.mjs --release"
-    "updater tests"      = "node tests/update.mjs"
+    "no-updater check"   = "node tests/update.mjs"
 }
 
 if ((Compare-Object $Built ($Exes | ForEach-Object { (Get-FileHash $_).Hash }))) {
@@ -99,9 +97,6 @@ $Zip = Join-Path $Dist "RobloxAccountManager-$Version.zip"
 Compress-Archive -Path "$Pack\*" -DestinationPath $Zip
 Remove-Item -Recurse -Force $Pack
 
-# signs, then checks the signature the same way the app does
-Step "Signature" { & target\release\examples\sign-release.exe $Zip }
-
-Write-Host ("`nReady to upload, in {0:N1} minutes:" -f ((Get-Date) - $Started).TotalMinutes) -ForegroundColor Green
+Write-Host ("`nReady, in {0:N1} minutes:" -f ((Get-Date) - $Started).TotalMinutes) -ForegroundColor Green
 Get-ChildItem $Dist | ForEach-Object { "  $($_.FullName)" }
 "  SHA-256 $((Get-FileHash $Zip -Algorithm SHA256).Hash)"

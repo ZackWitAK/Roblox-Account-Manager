@@ -1,128 +1,80 @@
-// Auto updater, end to end: node tests/update.mjs   (after cargo build --release)
+// No auto updater in this fork: node tests/update.mjs   (best after npm --prefix ui run build and cargo build --release)
 //
-// Runs the release build from a temporary folder (outside target, where updates are off) with a staged update:
-// - signed with the release key: installed, and the new version starts
-// - one byte changed in the zip: refused, the current version keeps running
-// - a signed zip staged as a newer version than the one it was signed for: refused
-// Needs the release signing key on this PC. Never touches GitHub, nor your own copy of the app.
+// The upstream updater installed whatever the upstream maintainer signed. This fork removed it (see AUDIT.md, H1),
+// and this test keeps it out:
+// - the sources, the Tauri config and the dependency lists have no updater code, endpoint or plugin
+// - the built exes and the built interface (when present) don't contain the GitHub releases endpoint either
+// Never runs the app, never touches the network.
 
-import { execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const release = path.join(root, 'target', 'release')
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const ps = (command) => execSync(`powershell -NoProfile -Command "${command}; exit 0"`, { encoding: 'utf8' }).trim()
 
-const key = path.join(os.homedir(), '.roblox-account-manager', 'release-signing-key.txt')
-if (!fs.existsSync(key)) {
-  console.error('No release signing key on this PC, skipping')
-  process.exit(0)
-}
-
-const version = /^version = "(\d+)\.(\d+)\.(\d+)"/m.exec(fs.readFileSync(path.join(root, 'Cargo.toml'), 'utf8')).slice(1).map(Number)
-const next = `${version[0]}.${version[1]}.${version[2] + 1}`
-const later = `${version[0]}.${version[1]}.${version[2] + 2}`
-const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ram-update-test-'))
-
-// the "new version": the same exes in a signed zip
-const zipDir = path.join(base, 'zip')
-fs.mkdirSync(zipDir)
-for (const exe of ['RobloxAccountManager.exe', 'ram-cli.exe']) fs.copyFileSync(path.join(release, exe), path.join(zipDir, exe))
-const zip = path.join(base, `RobloxAccountManager-${next}.zip`)
-ps(`Compress-Archive -Path '${zipDir}\\*' -DestinationPath '${zip}'`)
-// the release script has built everything already, and no cargo command may run there while the tests do: after a
-// version change cargo built the exes again in the middle of the tests, so the tested ones weren't the shipped ones.
-// On its own, built with the release script's command ("cargo run --example" resolves the features differently,
-// and the two kept rebuilding each other)
-if (!process.env.RAM_RELEASE_BUILT) execSync('cargo build -q --release --bins --example sign-release', { cwd: root, stdio: 'inherit' })
-execSync(`"${path.join(release, 'examples', 'sign-release.exe')}" "${zip}"`, { cwd: root, stdio: 'inherit' })
-
-function install(name, { zipBytes = fs.readFileSync(zip), stagedVersion = next } = {}) {
-  const dir = path.join(base, name)
-  fs.mkdirSync(path.join(dir, 'update'), { recursive: true })
-  for (const exe of ['RobloxAccountManager.exe', 'ram-cli.exe']) fs.copyFileSync(path.join(release, exe), path.join(dir, exe))
-  fs.writeFileSync(path.join(dir, 'RAMSettings.ini'), '[General]\r\nLanguage=en\r\n[Updates]\r\nCheck=false\r\nAutoInstall=false\r\n[AntiAFK]\r\nAccounts=__test_nobody__\r\nIdleSeconds=86400\r\nKeepAwake=false\r\nAutoRejoin=false\r\nAutoRejoinDefaultOn=true\r\n')
-  fs.writeFileSync(path.join(dir, 'AccountData.json'), '[]')
-  // a test copy: its own lock and browser data, so it runs next to your own app without touching it
-  fs.writeFileSync(path.join(dir, 'ram-test-copy'), '')
-  fs.writeFileSync(path.join(dir, 'NoEncryption.IUnderstandTheRisks.iautamor'), '')
-  fs.writeFileSync(path.join(dir, 'update', 'update.zip'), zipBytes)
-  fs.copyFileSync(`${zip}.sig`, path.join(dir, 'update', 'update.zip.sig'))
-  fs.writeFileSync(path.join(dir, 'update', 'version.txt'), stagedVersion)
-  return dir
-}
-
-const running = (dir) => ps(`Get-CimInstance Win32_Process -Filter \\"Name='RobloxAccountManager.exe'\\" | Where-Object { $_.ExecutablePath -like '${dir}\\*' } | ForEach-Object { $_.CommandLine }`)
-const stop = (dir) => ps(`Get-Process RobloxAccountManager -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '${dir}\\*' } | Stop-Process -Force`)
-const log = (dir) => (fs.existsSync(path.join(dir, 'log.txt')) ? fs.readFileSync(path.join(dir, 'log.txt'), 'utf8') : '')
-
-async function until(check, ms = 20000) {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (check()) return true
-    await sleep(250)
-  }
-  return false
-}
+// what only an updater needs: the releases API, the update commands, the restart flag, the signing key and plugins
+const MARKERS = ['api.github.com', 'releases/latest', 'update_check', 'update_restart', 'update_status', '--updated', 'release-signing-key', 'ed25519', 'plugin-updater', 'tauri-plugin-updater', 'install_staged']
 
 let failed = 0
-async function test(name, body) {
+async function test(name, run) {
   try {
-    await body()
-    console.log(`  ok    ${name}`)
+    await run()
+    console.log(`  ok  ${name}`)
   } catch (e) {
     failed++
-    console.log(`  FAIL  ${name}\n        ${e.message}`)
+    console.log(`  FAIL ${name}\n       ${String(e.message ?? e).replace(/\n/g, '\n       ')}`)
   }
 }
-const assert = (condition, message) => { if (!condition) throw new Error(message) }
 
-await test('a signed update is installed and the new version starts', async () => {
-  const dir = install('good')
-  spawn(path.join(dir, 'RobloxAccountManager.exe'), [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
-  try {
-    assert(await until(() => log(dir).includes(`Update ${next} installed`)), `not installed:\n${log(dir)}`)
-    assert(await until(() => running(dir).includes('--updated')), 'the new version did not start')
-    assert(await until(() => log(dir).includes('Started after an update')), `the new version did not get going:\n${log(dir)}`)
-    assert(!fs.existsSync(path.join(dir, 'update')), 'update folder left behind')
-    assert(fs.existsSync(path.join(dir, 'RobloxAccountManager.exe.old')), 'no backup of the previous version')
-  } finally {
-    stop(dir)
+function files(dir, extensions) {
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : files(full, extensions)
+    return extensions.some((ext) => entry.name.endsWith(ext)) ? [full] : []
+  })
+}
+
+function found(file, text) {
+  return MARKERS.filter((m) => text.includes(m)).map((m) => `${path.relative(root, file)}: "${m}"`)
+}
+
+await test('the sources have no updater', () => {
+  const sources = [
+    ...files(path.join(root, 'src'), ['.rs']),
+    ...files(path.join(root, 'ui', 'src'), ['.ts', '.tsx']),
+    ...files(path.join(root, 'capabilities'), ['.json']),
+    ...['tauri.conf.json', 'Cargo.toml', 'ui/package.json'].map((f) => path.join(root, f)),
+  ]
+  const hits = sources.flatMap((f) => found(f, fs.readFileSync(f, 'utf8')))
+  if (hits.length) throw new Error(hits.join('\n'))
+  for (const gone of ['src/services/updater.rs', 'src/commands/updates.rs', 'examples/sign-release.rs']) {
+    if (fs.existsSync(path.join(root, gone))) throw new Error(`${gone} is back`)
   }
 })
 
-await test('a changed zip is refused and the current version keeps running', async () => {
-  const bytes = fs.readFileSync(zip)
-  bytes[Math.floor(bytes.length / 2)] ^= 0xff
-  const dir = install('tampered', { zipBytes: bytes })
-  spawn(path.join(dir, 'RobloxAccountManager.exe'), [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
-  try {
-    assert(await until(() => log(dir).includes("isn't signed with the release key")), `not refused:\n${log(dir)}`)
-    assert(await until(() => running(dir) !== ''), 'the app did not keep running')
-    assert(!running(dir).includes('--updated'), 'an update was started')
-    assert(!fs.existsSync(path.join(dir, 'update')), 'the refused update was kept')
-    assert(!fs.existsSync(path.join(dir, 'RobloxAccountManager.exe.old')), 'files were swapped')
-  } finally {
-    stop(dir)
-  }
+await test('the lock files have no updater or signing crates', () => {
+  const lock = fs.readFileSync(path.join(root, 'Cargo.lock'), 'utf8')
+  const crates = ['ed25519-dalek', 'tauri-plugin-updater', 'minisign-verify'].filter((c) => lock.includes(`name = "${c}"`))
+  if (crates.length) throw new Error(`Cargo.lock has ${crates.join(', ')}`)
+  const npm = fs.readFileSync(path.join(root, 'ui', 'package-lock.json'), 'utf8')
+  if (npm.includes('@tauri-apps/plugin-updater')) throw new Error('ui/package-lock.json has @tauri-apps/plugin-updater')
 })
 
-await test('a signed zip passed off as a newer version is refused', async () => {
-  const dir = install('relabelled', { stagedVersion: later })
-  spawn(path.join(dir, 'RobloxAccountManager.exe'), [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
-  try {
-    assert(await until(() => log(dir).includes("isn't signed with the release key")), `not refused:\n${log(dir)}`)
-    assert(!running(dir).includes('--updated'), 'an update was started')
-  } finally {
-    stop(dir)
+await test('built exes and interface have no updater (skipped when not built)', () => {
+  const built = [
+    ...['release', 'debug'].flatMap((profile) => ['RobloxAccountManager.exe', 'ram-cli.exe'].map((exe) => path.join(root, 'target', profile, exe))),
+    ...files(path.join(root, 'ui', 'dist'), ['.js']),
+  ].filter((f) => fs.existsSync(f))
+  if (!built.length) {
+    console.log('       nothing built yet, only the sources were checked')
+    return
   }
+  // the exe holds its strings as UTF-8, latin1 keeps every byte so includes() finds them
+  const hits = built.flatMap((f) => found(f, fs.readFileSync(f).toString('latin1')).filter((h) => !h.endsWith('"ed25519"')))
+  if (hits.length) throw new Error(hits.join('\n'))
+  console.log(`       checked ${built.map((f) => path.relative(root, f)).join(', ')}`)
 })
 
-await sleep(500)
-fs.rmSync(base, { recursive: true, force: true })
 console.log(`\n${3 - failed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

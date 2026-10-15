@@ -40,7 +40,6 @@ Commands:
   status                             the app, accounts, Roblox and Anti-AFK at a glance
   open                               show the app window, starting it if needed
   fps <accounts> <5-1000|default>     frame rate limit per account, applied when it launches
-  update                             download a new version (signed), installed on the next start
   help, version
 
 When Roblox Account Manager is open, commands run inside it. Otherwise ram-cli
@@ -205,17 +204,14 @@ async fn without_app(request: Request, out: &Out) -> i32 {
         }
     };
 
-    crate::platform::logging::init(&dir, false);
+    crate::platform::logging::init(&dir);
     let app = app::init(dir);
-    // updating doesn't need the accounts, so it never asks for their password
-    if request.args[0] != "update" {
-        if let Err(e) = open_accounts(&app, &request.args[0]) {
-            out.error(e);
-            return 1;
-        }
-        app.ready.store(true, std::sync::atomic::Ordering::SeqCst);
-        app.update_multi_roblox();
+    if let Err(e) = open_accounts(&app, &request.args[0]) {
+        out.error(e);
+        return 1;
     }
+    app.ready.store(true, std::sync::atomic::Ordering::SeqCst);
+    app.update_multi_roblox();
 
     run::execute(&app, request, out, false).await
 }

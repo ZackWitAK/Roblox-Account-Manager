@@ -3,6 +3,5 @@
 pub mod antiafk;
 pub mod browser;
 pub mod launcher;
-pub mod updater;
 pub mod watcher;
 pub mod webserver;

@@ -405,21 +405,6 @@ async function main() {
       await key('Escape')
     })
 
-    await test('automatic updates can be turned off with one choice', async () => {
-      const ini = () => fs.readFileSync(path.join(work, 'RAMSettings.ini'), 'utf8')
-      const updates = () => /\[Updates\][^[]*/.exec(ini())?.[0] ?? ''
-      await click('Settings', 'button')
-      await evaluate(`[...document.querySelectorAll('[data-slot=setting-row], div')].find((e) => e.innerText?.startsWith('Automatic updates'))?.scrollIntoView()`)
-      await click('Automatic', '[role=combobox]')
-      await click('Off', '[role=option]')
-      await until(async () => /Check=false/.test(updates()) && /AutoInstall=false/.test(updates()), `not saved as off:\n${updates()}`)
-      assert((await text()).includes('never contacts GitHub'), 'no explanation for "Off"')
-      await click('Off', '[role=combobox]')
-      await click('Automatic', '[role=option]')
-      await until(async () => /Check=true/.test(updates()) && /AutoInstall=true/.test(updates()), `not saved as automatic:\n${updates()}`)
-      await key('Escape')
-    })
-
     await test('theme editor', async () => {
       await click('Theme Editor', 'button')
       assert((await text()).includes('Midnight'), 'presets')

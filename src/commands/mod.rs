@@ -11,7 +11,6 @@ pub mod avatar;
 pub mod account_utils;
 pub mod browsing;
 pub mod settings;
-pub mod updates;
 pub mod backup;
 
 

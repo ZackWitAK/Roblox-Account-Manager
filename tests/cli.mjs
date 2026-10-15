@@ -94,6 +94,7 @@ await test('frame rate limit per account', () => {
 await test('status', () => expect(cli(work, ['status']), 0, 'not open', 'Accounts: 5', 'Anti-AFK: off'))
 await test('wrong command lines exit with 2', () => {
   expect(cli(work, ['dance']), 2, "Unknown command 'dance'", 'ram-cli help')
+  expect(cli(work, ['update']), 2, "Unknown command 'update'") // no updater in this fork
   expect(cli(work, ['join']), 2, 'Name the accounts')
   expect(cli(work, ['join', 'Main', '--place', 'abc']), 2, '--place takes a place id')
   expect(cli(work, ['join', 'Main', '--pace', '1']), 2, 'Unknown option --pace')
@@ -114,10 +115,6 @@ await test('password protected accounts', () => {
   const wrong = cli(locked, ['list'], { RAM_PASSWORD: 'wrong-password' })
   if (wrong.code !== 1) throw new Error(wrong.out + wrong.err)
   expect(cli(locked, ['list'], { RAM_PASSWORD: 'teste1234' }), 0, 'NightFalcon_07')
-  // updating never needs the accounts, so it doesn't ask for their password (and test copies don't update)
-  const update = cli(locked, ['update'])
-  expect(update, 1, 'development build')
-  if ((update.out + update.err).includes('RAM_PASSWORD')) throw new Error('update asked for the password')
 })
 
 console.log('Through the open app')

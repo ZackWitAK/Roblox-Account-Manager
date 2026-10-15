@@ -58,10 +58,6 @@ impl Settings {
             w.set_default(key, value);
         }
 
-        let updates = self.ini.section_mut("Updates");
-        updates.set_default("Check", "true");
-        updates.set_default("AutoInstall", "true");
-
         let afk = self.ini.section_mut("AntiAFK");
         // Rejoining became on by default (4.1.13). Copies from before have "AutoRejoin=false" written as the old
         // default, not as a choice: turned on once, then the marker keeps whatever the user picks afterwards

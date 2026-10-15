@@ -5,7 +5,7 @@ use std::os::windows::ffi::OsStrExt;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, BOOL, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, LPARAM, WAIT_ABANDONED, WAIT_OBJECT_0, WPARAM};
-use windows::Win32::System::Threading::{CreateMutexW, GetExitCodeProcess, OpenProcess, ReleaseMutex, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE};
+use windows::Win32::System::Threading::{CreateMutexW, GetExitCodeProcess, OpenProcess, ReleaseMutex, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, MoveWindow, PostMessageW, GW_OWNER, SW_SHOWNORMAL,
@@ -116,15 +116,6 @@ pub fn process_alive(pid: u32) -> bool {
         let alive = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE;
         let _ = CloseHandle(handle);
         alive
-    }
-}
-
-/// Waits (at most `limit`) for a process to end; at once when it's already gone
-pub fn wait_process_exit(pid: u32, limit: std::time::Duration) {
-    unsafe {
-        let Ok(handle) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) else { return };
-        WaitForSingleObject(handle, limit.as_millis().min(u32::MAX as u128) as u32);
-        let _ = CloseHandle(handle);
     }
 }
 

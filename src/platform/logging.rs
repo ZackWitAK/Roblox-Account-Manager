@@ -26,11 +26,9 @@ impl log::Log for FileLog {
     }
 }
 
-/// A fresh log.txt every start (it can hold account names, it shouldn't grow forever). `keep` adds to the previous
-/// one instead: the first start after an update, so how the update went stays in the log.
-pub fn init(dir: &std::path::Path, keep: bool) {
-    let path = dir.join("log.txt");
-    let file = if keep { std::fs::OpenOptions::new().create(true).append(true).open(&path) } else { std::fs::File::create(&path) };
+/// A fresh log.txt every start (it can hold account names, it shouldn't grow forever)
+pub fn init(dir: &std::path::Path) {
+    let file = std::fs::File::create(dir.join("log.txt"));
     if let Ok(file) = file {
         if log::set_boxed_logger(Box::new(FileLog(Mutex::new(file)))).is_ok() {
             log::set_max_level(log::LevelFilter::Info);

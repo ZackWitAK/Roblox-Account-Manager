@@ -40,7 +40,6 @@ async fn command(app: &Arc<App>, request: Request, out: &Out, in_app: bool) -> R
         "import" => import(app, request.input.unwrap_or_default(), out).await,
         "antiafk" | "anti-afk" => anti_afk(app, rest, out, in_app),
         "status" => status(app, out, in_app),
-        "update" => update(app, out).await,
         "fps" => {
             let (value, accounts) = rest.split_last().ok_or_else(|| usage("ram-cli fps <accounts> <5-1000 or default>"))?;
             fps(app, &Args::parse(accounts, &["all"], &["group"])?, value, out)
@@ -264,19 +263,6 @@ fn fps(app: &App, args: &Args, value: &str, out: &Out) -> Result<()> {
     crate::commands::accounts::set_fps_limit(names.clone(), limit).map_err(|e| anyhow!(e))?;
     let what = limit.map(|n| format!("{n} FPS")).unwrap_or_else(|| "the settings' limit".into());
     out.line(format!("{} now use {what}, from their next launch", names.join(", ")));
-    Ok(())
-}
-
-/// Checks for a new version and downloads it (verified), it's installed when the app starts the next time
-async fn update(app: &Arc<App>, out: &Out) -> Result<()> {
-    use crate::services::updater::{check, Status};
-    match check(app, true).await {
-        Status::UpToDate => out.line(format!("Roblox Account Manager {} is up to date", env!("CARGO_PKG_VERSION"))),
-        Status::Ready { version } => out.line(format!("Version {version} is downloaded and verified, it's installed when Roblox Account Manager starts the next time")),
-        Status::Disabled => bail!("This is a development build, it doesn't update itself"),
-        Status::Error { message } => bail!("{message}"),
-        other => out.line(format!("{other:?}")),
-    }
     Ok(())
 }
 

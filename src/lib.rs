@@ -48,22 +48,8 @@ pub fn run() {
     let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())).unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let _ = std::env::set_current_dir(&dir);
 
-    // started by an update: the previous version is quitting, give it a moment to be gone (its lock, and the web
-    // server's port and command line pipe it lets go of only as it ends)
-    let args: Vec<String> = std::env::args().collect();
-    let after_update = args.iter().any(|a| a == "--updated");
-    if let Some(pid) = args.iter().position(|a| a == "--after").and_then(|i| args.get(i + 1)).and_then(|p| p.parse().ok()) {
-        win::wait_process_exit(pid, std::time::Duration::from_secs(10));
-    }
     let lock = instance_lock(&dir);
-    let mut instance = NamedMutex::acquire(&lock);
-    for _ in 0..if after_update { 50 } else { 0 } {
-        if matches!(instance, Ok((_, true))) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        instance = NamedMutex::acquire(&lock);
-    }
+    let instance = NamedMutex::acquire(&lock);
 
     let _instance = match instance {
         Ok((mutex, true)) => mutex,
@@ -79,17 +65,8 @@ pub fn run() {
         }
     };
 
-    platform::logging::init(&dir, after_update);
+    platform::logging::init(&dir);
     log::info!("Roblox Account Manager {} started in {}", env!("CARGO_PKG_VERSION"), dir.display());
-    if after_update {
-        log::info!("Started after an update");
-    }
-
-    // an update downloaded earlier (and verified again now) replaces this version before anything starts
-    if services::updater::install_staged(&dir) {
-        return;
-    }
-    services::updater::clean_old(dir.clone());
 
     let test_copy = is_test_copy(&dir);
     if test_copy {
@@ -108,7 +85,6 @@ pub fn run() {
     services::watcher::apply(state.clone());
     services::antiafk::spawn(state.clone());
     cli::pipe::serve(state.clone());
-    services::updater::spawn(state.clone());
 
     let setup_state = state.clone();
     let close_state = state.clone();
@@ -217,9 +193,6 @@ pub fn run() {
             commands::settings::pick_file,
             commands::settings::open_target,
             commands::settings::watcher_enable,
-            commands::updates::update_status,
-            commands::updates::update_check,
-            commands::updates::update_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roblox Account Manager");
