@@ -37,12 +37,13 @@ run a copy whose code has been read and that only changes when its owner changes
   [build again](#building-from-source).
 - **No prebuilt releases.** Build it yourself, and don't run upstream's release exes: the source here is what was
   reviewed.
-- Everything else (features, file formats, local web API) is upstream's. Findings rated medium and low in the audit
-  are not fixed yet.
+- **Medium findings fixed:** the watcher no longer downloads patterns from upstream's GitHub (M1), the Chrome
+  download is only accepted from Google's own address and its SHA-256 is logged (M2), and the local web API
+  refuses web pages and needs the password for every method that changes an account (M3).
+- Everything else (features, file formats) is upstream's. The low findings in the audit are not fixed.
 
-**Still contacted at runtime:** the Roblox APIs, Google's Chrome for Testing download (first time you add an account),
-and, only when the Roblox Watcher is on, a pattern file on upstream's GitHub (audit finding M1). Optional, if you turn
-them on: ip-api.com for server regions and your Discord webhook. See [AUDIT.md](AUDIT.md#2-network-calls-every-outbound-host).
+**Still contacted at runtime:** the Roblox APIs and Google's Chrome for Testing download (first time you add an
+account). Optional, if you turn them on: ip-api.com for server regions and your Discord webhook. See [AUDIT.md](AUDIT.md#2-network-calls-every-outbound-host).
 
 **Adding accounts.** The browser used to add accounts (Chrome for Testing) is downloaded automatically the first
 time you need it, into `%LOCALAPPDATA%\RobloxAccountManager\Chrome`. Nothing in this app solves or skips Roblox's
@@ -256,6 +257,8 @@ If you ever want a friend to join a game using your account, make sure the Place
 # Developer API
 Enable it in `Settings` > `Developer` > `Enable Web Server`. It answers the same requests as the original app, see the [documentation](https://ic3w0lf22.gitbook.io/roblox-account-manager/), and [`RAMAccount.lua`](RAMAccount.lua) is a ready-made client for it.
 Set a password and change the port if you plan on enabling any dangerous method, and be careful running random scripts with those enabled.
+
+In this fork the API is stricter than upstream (AUDIT.md, M3): requests sent by a web page (with an `Origin` or a `Sec-Fetch-Site` header) are refused, only `localhost`/`127.0.0.1` are accepted as `Host` unless external connections are allowed, and every method that changes an account or adds one (`ImportCookie`, `SetAvatar`, `SetAlias`, `SetDescription`, `AppendDescription`, `SetField`, `RemoveField`, `BlockUser`, `UnblockUser`, `UnblockEveryone`, `SetServer`, `SetRecommendedServer`), and `GetCSRFToken`, needs the password. `SetAvatar` also needs `Allow Account Editing`. `RAMAccount.lua` sends the password once you call `WebserverSettings:SetPassword`.
 
 # Frequently Asked Questions
 ## **Q:** Why is this program detected as a virus?

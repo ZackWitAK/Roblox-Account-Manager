@@ -23,9 +23,9 @@ The fork is fit to use once the updater is removed, with the caveats under "Not 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
 | H1 | **High** | Auto-updater trusts the upstream maintainer's signing key, and checks and installs automatically by default | **Fixed on `hardening`**: updater removed |
-| M1 | Medium | The Roblox watcher downloads regex patterns from upstream's `master` branch at runtime | Proposed, awaiting approval |
-| M2 | Medium | The Chrome for Testing download has no host allowlist and no integrity check beyond HTTPS | Proposed, awaiting approval |
-| M3 | Medium | Local web API (off by default): no Origin or Host check, and several state-changing methods need no password | Proposed, awaiting approval |
+| M1 | Medium | The Roblox watcher downloads regex patterns from upstream's `master` branch at runtime | **Fixed on `hardening`** |
+| M2 | Medium | The Chrome for Testing download has no host allowlist and no integrity check beyond HTTPS | **Fixed on `hardening`** |
+| M3 | Medium | Local web API (off by default): no Origin or Host check, and several state-changing methods need no password | **Fixed on `hardening`** |
 | P1 | Policy (see note) | The login browser hides automation signals from Roblox's bot detection | **Your decision needed** |
 | L1 | Low | Login passwords are captured and saved by default (`SavePasswords=true`) | Proposed, awaiting approval |
 | L2 | Low | Old backup files keep the previous encryption, and cookies, for up to 8 hours after you switch to password protection | Manual step in the migration plan |
@@ -68,7 +68,7 @@ Writes are atomic: a temp file, then a rename ([src/core/accounts.rs:331-333](sr
 | `www`, `auth`, `apis`, `users`, `games`, `gamejoin`, `economy`, `avatar`, `thumbnails`, `presence`, `friends`, `accountsettings`, `develop`, `clientsettings`, `assetgame` `.roblox.com` | Roblox APIs, sent with the account's cookie | [src/roblox/](src/roblox/), [src/services/launcher.rs](src/services/launcher.rs) | Yes |
 | `*.rbxcdn.com`, `*.roblox.com` (images) | Avatars and game icons in the UI (CSP `img-src`) | [tauri.conf.json](tauri.conf.json) | Yes |
 | `api.github.com`, `github.com` | **Auto-updater** (H1) | [src/services/updater.rs:129](src/services/updater.rs#L129), [src/services/updater.rs:150](src/services/updater.rs#L150) | **Removed** on `hardening` |
-| `raw.githubusercontent.com/Gugas19/...` | **Watcher regex patterns** (M1) | [src/services/watcher.rs:54](src/services/watcher.rs#L54) | **Flagged**: upstream-controlled |
+| `raw.githubusercontent.com/Gugas19/...` | **Watcher regex patterns** (M1) | [src/services/watcher.rs:54](src/services/watcher.rs#L54) | **Removed** on `hardening` (M1) |
 | `googlechromelabs.github.io` and the URL it returns (normally `storage.googleapis.com`) | Chrome for Testing download, on first use (M2) | [src/services/browser/install.rs:28-89](src/services/browser/install.rs#L28-L89) | Yes, but the download URL isn't checked |
 | `ip-api.com` (**plain HTTP**) | Server region lookup when you open the server list (L4). Configurable as `IPApiLink`. | [src/commands/servers.rs:99-110](src/commands/servers.rs#L99-L110), [src/core/settings.rs:30](src/core/settings.rs#L30) | Yes, as in the original |
 | `discord.com` / `discordapp.com` / `ptb.` / `canary.` `/api/webhooks/` | Anti-AFK notifications. Only if you enter a webhook URL; other hosts are rejected. | [src/services/antiafk/webhook.rs:53-56](src/services/antiafk/webhook.rs#L53-L56) | Yes, opt-in |
@@ -80,7 +80,7 @@ Writes are atomic: a temp file, then a rename ([src/core/accounts.rs:331-333](sr
 
 **No telemetry, analytics, crash reporting, or other hosts were found.** I searched `src/` and `ui/src/` for every `http(s)://` and `ws(s)://` literal.
 
-**M1: remote watcher patterns.** When the Roblox Watcher is enabled, the app downloads `WatcherRegexMatches.txt` from **Gugas19's `master` branch** and its patterns override the built-in ones ([src/services/watcher.rs:52-64](src/services/watcher.rs#L52-L64), called at [src/services/watcher.rs:276](src/services/watcher.rs#L276)). That path (`RBX Alt Manager/Resources/...`) comes from the old C# repository and doesn't exist at the pinned commit, so today it returns 404 and the defaults are used. If upstream ever adds the file, they control how your watcher reads Roblox logs. The `regex` crate runs in linear time, so this can't hang the app or run code, but it can change when the watcher decides to close or rejoin clients. **Recommendation:** delete the fetch and keep the built-in patterns.
+**M1: remote watcher patterns.** When the Roblox Watcher is enabled, the app downloads `WatcherRegexMatches.txt` from **Gugas19's `master` branch** and its patterns override the built-in ones ([src/services/watcher.rs:52-64](src/services/watcher.rs#L52-L64), called at [src/services/watcher.rs:276](src/services/watcher.rs#L276)). That path (`RBX Alt Manager/Resources/...`) comes from the old C# repository and doesn't exist at the pinned commit, so today it returns 404 and the defaults are used. If upstream ever adds the file, they control how your watcher reads Roblox logs. The `regex` crate runs in linear time, so this can't hang the app or run code, but it can change when the watcher decides to close or rejoin clients. **Fixed on `hardening`:** the fetch is gone and only the built-in patterns are used.
 
 **M2: Chrome for Testing download.** The app reads Google's version JSON and downloads whatever `win64` URL it lists. It doesn't check the URL's scheme or host and has no hash to verify against. It then extracts and runs `chrome.exe` ([src/services/browser/install.rs:31-89](src/services/browser/install.rs#L31-L89)). Extraction uses `zip`'s `extract`, which rejects path traversal. The trust chain is HTTPS to `googlechromelabs.github.io`. **Recommendation:** only accept `https://storage.googleapis.com/chrome-for-testing-public/` URLs, and log the version and SHA-256 of what was installed.
 
@@ -189,6 +189,9 @@ None of this solves the "Press and hold" challenge. You still do that yourself, 
    - `tools/release.ps1` no longer builds or runs the signing tool.
    - An existing `[Updates]` section in `RAMSettings.ini` is now ignored.
 3. **README** rewritten for this fork.
+4. **M1:** the watcher uses only its built-in patterns; the download from upstream's GitHub is gone ([src/services/watcher.rs](src/services/watcher.rs)).
+5. **M2:** the Chrome for Testing version must be four numbers and the download URL must be exactly `https://storage.googleapis.com/chrome-for-testing-public/<version>/win64/chrome-win64.zip`. The download is capped at 600 MB and its size and SHA-256 are written to `log.txt` ([src/services/browser/install.rs](src/services/browser/install.rs)).
+6. **M3:** the web API refuses requests carrying `Origin` or a `Sec-Fetch-Site` other than `none`, refuses a `Host` other than `localhost`/`127.0.0.1`/`[::1]` unless external connections are allowed, requires the password for every state-changing method and `GetCSRFToken`, and puts `SetAvatar` behind `AllowAccountEditing` ([src/services/webserver.rs](src/services/webserver.rs)). Scripts that call these methods must now send the password.
 
 ## Not verified
 
