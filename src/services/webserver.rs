@@ -64,13 +64,59 @@ fn query(url: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+/// Methods that change an account, add one, or hand out its CSRF token: they need the web server password like the
+/// cookie and launch methods always did (AUDIT.md, M3)
+const PROTECTED: &[&str] = &[
+    "GetCookie", "GetAccounts", "LaunchAccount", "FollowUser", "KillProcess", "ImportCookie", "GetCSRFToken", "SetAvatar", "BlockUser",
+    "UnblockUser", "UnblockEveryone", "SetServer", "SetRecommendedServer", "SetField", "RemoveField", "SetAlias", "SetDescription",
+    "AppendDescription",
+];
+
+/// Why a request is refused before it's handled, if it is. Browsers mark the requests a web page makes with `Origin`
+/// and/or `Sec-Fetch-Site`, scripts and other programs don't: no web page you visit may reach the API. And a page that
+/// points its own name at 127.0.0.1 (DNS rebinding) sends that name as `Host`, so on this PC only local names are
+/// accepted (AUDIT.md, M3)
+fn refused(origin: Option<&str>, fetch_site: Option<&str>, host: Option<&str>, port: i64, external: bool) -> Option<&'static str> {
+    // "none": typed in the address bar by the user, not sent by a page
+    if origin.is_some() || fetch_site.map(|s| !s.eq_ignore_ascii_case("none")).unwrap_or(false) {
+        return Some("Requests from web pages are not allowed");
+    }
+    if !external {
+        if let Some(host) = host {
+            let local = ["localhost", "127.0.0.1", "[::1]"].iter().any(|name| host.eq_ignore_ascii_case(name) || host.eq_ignore_ascii_case(&format!("{name}:{port}")));
+            if !local {
+                return Some("Unexpected Host, only localhost and 127.0.0.1 are accepted");
+            }
+        }
+    }
+    None
+}
+
 fn respond(mut request: tiny_http::Request) {
+    let app = app();
+    let header = |name: &'static str| request.headers().iter().find(|h| h.field.equiv(name)).map(|h| h.value.as_str().to_string());
+    let why = refused(
+        header("Origin").as_deref(),
+        header("Sec-Fetch-Site").as_deref(),
+        header("Host").as_deref(),
+        app.setting_i64("WebServer", "WebServerPort", 7963),
+        app.setting_bool("WebServer", "AllowExternalConnections"),
+    );
+    if let Some(why) = why {
+        let mut response = tiny_http::Response::from_string(why).with_status_code(403);
+        if let Ok(h) = tiny_http::Header::from_bytes("ws-error", why.as_bytes()) {
+            response.add_header(h);
+        }
+        let _ = request.respond(response);
+        return;
+    }
+
     let local = request.remote_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
     let url = request.url().to_string();
     let mut body = String::new();
     let _ = request.as_reader().read_to_string(&mut body);
 
-    let reply = handle(&app(), &url, local, &body);
+    let reply = handle(&app, &url, local, &body);
 
     let mut response = tiny_http::Response::from_string(reply.body.clone()).with_status_code(reply.status);
     response.add_header(tiny_http::Header::from_bytes("Content-Type", "text/plain; charset=utf-8").unwrap());
@@ -120,7 +166,7 @@ pub fn handle(app: &App, url: &str, local: bool, body: &str) -> Reply {
         return reply("1.0.0".into(), true, None, None);
     }
 
-    if ["GetCookie", "GetAccounts", "LaunchAccount", "FollowUser", "KillProcess"].contains(&method) && !password_ok {
+    if PROTECTED.contains(&method) && !password_ok {
         return invalid_password();
     }
 
@@ -313,6 +359,9 @@ pub fn handle(app: &App, url: &str, local: bool, body: &str) -> Reply {
             return reply(format!("Removed Field {} from {}", get("Field"), account.username), true, None, None);
         }
         "SetAvatar" if serde_json::from_str::<serde_json::Value>(body).is_ok() => {
+            if !app.setting_bool("WebServer", "AllowAccountEditing") {
+                return not_allowed("SetAvatar");
+            }
             let avatar: serde_json::Value = serde_json::from_str(body).unwrap();
             let token = account.security_token.clone();
             tauri::async_runtime::spawn(async move {
@@ -373,5 +422,37 @@ mod tests {
         assert_eq!(q["PlaceId"], "1");
         assert_eq!(q["JobId"], "");
         assert_eq!(q["Password"], "a b");
+    }
+
+    #[test]
+    fn web_pages_are_refused() {
+        // scripts and programs: no Origin, no Sec-Fetch-Site
+        assert_eq!(refused(None, None, Some("localhost:7963"), 7963, false), None);
+        assert_eq!(refused(None, None, Some("127.0.0.1:7963"), 7963, false), None);
+        assert_eq!(refused(None, None, None, 7963, false), None);
+        // the user typing the address in a browser
+        assert_eq!(refused(None, Some("none"), Some("127.0.0.1:7963"), 7963, false), None);
+        // a page fetching, posting or loading an image from the API
+        assert!(refused(Some("https://evil.example"), Some("cross-site"), Some("127.0.0.1:7963"), 7963, false).is_some());
+        assert!(refused(None, Some("cross-site"), Some("127.0.0.1:7963"), 7963, false).is_some());
+        assert!(refused(Some("null"), None, Some("127.0.0.1:7963"), 7963, true).is_some());
+    }
+
+    #[test]
+    fn rebound_names_are_refused() {
+        assert!(refused(None, None, Some("evil.example:7963"), 7963, false).is_some());
+        assert!(refused(None, None, Some("127.0.0.1:8000"), 7963, false).is_some());
+        // other devices are allowed in: they use this PC's address or name
+        assert_eq!(refused(None, None, Some("192.168.1.20:7963"), 7963, true), None);
+    }
+
+    #[test]
+    fn every_changing_method_needs_the_password() {
+        for method in ["ImportCookie", "SetAvatar", "BlockUser", "UnblockEveryone", "SetServer", "SetField", "SetAlias", "GetCSRFToken", "GetCookie"] {
+            assert!(PROTECTED.contains(&method), "{method}");
+        }
+        for method in ["GetAlias", "GetDescription", "GetField", "GetBlockedList", "GetAccountsJson"] {
+            assert!(!PROTECTED.contains(&method), "{method}");
+        }
     }
 }
