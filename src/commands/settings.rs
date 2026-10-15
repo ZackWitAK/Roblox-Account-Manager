@@ -79,7 +79,7 @@ pub fn pick_file(title: String) -> Option<String> {
 pub fn open_target(kind: String, value: Option<String>) -> R<()> {
     let app = app();
     let target = match kind.as_str() {
-        "github" => "https://github.com/Gugas19/Roblox-Account-Manager".to_string(),
+        "github" => "https://github.com/ZackWitAK/Roblox-Account-Manager".to_string(),
         "logs" => std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Roblox\\logs",
         "browser" => browser::browser_folder().to_string_lossy().to_string(),
         "data" => app.dir.to_string_lossy().to_string(),
