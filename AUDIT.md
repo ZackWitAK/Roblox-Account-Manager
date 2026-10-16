@@ -26,7 +26,7 @@ The fork is fit to use once the updater is removed, with the caveats under "Not 
 | M1 | Medium | The Roblox watcher downloads regex patterns from upstream's `master` branch at runtime | **Fixed on `hardening`** |
 | M2 | Medium | The Chrome for Testing download has no host allowlist and no integrity check beyond HTTPS | **Fixed on `hardening`** |
 | M3 | Medium | Local web API (off by default): no Origin or Host check, and several state-changing methods need no password | **Fixed on `hardening`** |
-| P1 | Policy (see note) | The login browser hides automation signals from Roblox's bot detection | **Your decision needed** |
+| P1 | Policy (see note) | The login browser hides automation signals from Roblox's bot detection | Kept as upstream (owner's decision) |
 | L1 | Low | Login passwords are captured and saved by default (`SavePasswords=true`) | Proposed, awaiting approval |
 | L2 | Low | Old backup files keep the previous encryption, and cookies, for up to 8 hours after you switch to password protection | Manual step in the migration plan |
 | L3 | Low | The temporary Chrome profile, which holds a live session cookie, is left in `%TEMP%` if the app crashes | Proposed, awaiting approval |
@@ -142,10 +142,12 @@ Anti-AFK input, multiple Roblox clients, and FPS unlocking may break Roblox's Te
 
 The login browser is started with `--disable-blink-features=AutomationControlled` ([src/services/browser/mod.rs:87](src/services/browser/mod.rs#L87)). It also injects `Object.defineProperty(navigator, 'webdriver', { get: () => undefined })` into every page ([src/services/browser/mod.rs:154](src/services/browser/mod.rs#L154)) and sends a fake `Referer: https://google.com/` ([src/services/browser/mod.rs:227](src/services/browser/mod.rs#L227)). The code comment says why: "Roblox shows more captchas to automated browsers".
 
-None of this solves the "Press and hold" challenge. You still do that yourself, and nothing in the code clicks, holds, or solves challenges. But it does **hide from Roblox's bot detection that the browser is being driven by a program**, which conflicts with your "no evasion" constraint. It's already in the upstream code, not something added here, so I've left it as is for you to decide:
+None of this solves the "Press and hold" challenge. You still do that yourself, and nothing in the code clicks, holds, or solves challenges. But it does **hide from Roblox's bot detection that the browser is being driven by a program**, which conflicts with your "no evasion" constraint. It's already in the upstream code, not something added here, so it was left for the owner to decide between:
 
 - **Remove it** (consistent with your constraint). The DevTools-controlled browser will then show `navigator.webdriver === true`, and Roblox may challenge you more often or block the login. In that case, cookie import is the fallback.
 - **Keep it** (upstream behavior).
+
+**Decision (2026-10-15): kept.** The owner chose to keep upstream's behavior, so this fork doesn't change it.
 
 ## 6. Build-time and configuration risks
 
